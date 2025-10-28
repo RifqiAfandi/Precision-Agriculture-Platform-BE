@@ -1,291 +1,433 @@
-# Precision Agriculture Platform - Backend
+# Precision Agriculture Platform - Backend# Precision Agriculture Platform - Backend
 
-Backend API untuk Precision Agriculture Platform dengan autentikasi JWT dan sistem manajemen pengguna lengkap.
 
-## 🚀 Features
 
-- ✅ Django 5.0 REST Framework
-- ✅ JWT Authentication dengan djangorestframework-simplejwt
-- ✅ Custom User Model (email-based authentication)
-- ✅ User Registration & Login
-- ✅ Profile Management
-- ✅ Password Change
-- ✅ Token Blacklist untuk logout
-- ✅ PostgreSQL & SQLite support
-- ✅ CORS enabled untuk frontend integration
-- ✅ Environment-based configuration
+Backend API dengan autentikasi JWT dan sistem manajemen pengguna.Backend API untuk Precision Agriculture Platform dengan autentikasi JWT dan sistem manajemen pengguna lengkap.
 
-## 📋 Prerequisites
 
-- Python 3.8 atau lebih tinggi
-- PostgreSQL 12+ (opsional, bisa pakai SQLite untuk development)
-- pip (Python package manager)
 
-## 🔧 Installation
+## Features## 🚀 Features
 
-### 1. Clone Repository
-```bash
-git clone https://github.com/RifqiAfandi/Precision-Agriculture-Platform-BE.git
-cd Precision-Agriculture-Platform-BE
-```
 
-### 2. Create Virtual Environment
-```bash
-python -m venv venv
 
-# Windows
-venv\Scripts\activate
+- Django 5.0 REST Framework- ✅ Django 5.0 REST Framework
 
-# Linux/Mac
-source venv/bin/activate
-```
+- JWT Authentication (djangorestframework-simplejwt)- ✅ JWT Authentication dengan djangorestframework-simplejwt
 
-### 3. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
+- Custom User Model (email-based)- ✅ Custom User Model (email-based authentication)
 
-### 4. Environment Configuration
+- User Registration & Login- ✅ User Registration & Login
 
-Buat file `.env` di root project:
+- Profile Management- ✅ Profile Management
 
-**Untuk Development (SQLite):**
-```env
-SECRET_KEY=your-secret-key-here
-DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1
+- Password Change- ✅ Password Change
 
-# Database - SQLite
-USE_SQLITE=True
+- Token Blacklist untuk logout- ✅ Token Blacklist untuk logout
 
-# CORS
-CORS_ALLOW_ALL_ORIGINS=True
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173
-```
+- PostgreSQL & SQLite support- ✅ PostgreSQL & SQLite support
 
-**Untuk Production (PostgreSQL):**
-```env
-SECRET_KEY=your-secret-key-here
-DEBUG=False
-ALLOWED_HOSTS=yourdomain.com
+- CORS enabled- ✅ CORS enabled untuk frontend integration
 
-# Database - PostgreSQL
-USE_SQLITE=False
-DB_NAME=precision_agriculture
-DB_USER=postgres
-DB_PASSWORD=your_password
-DB_HOST=localhost
-DB_PORT=5432
+- Environment-based configuration- ✅ Environment-based configuration
 
-# CORS
-CORS_ALLOW_ALL_ORIGINS=False
-CORS_ALLOWED_ORIGINS=https://yourdomain.com
-```
 
-### 5. Run Migrations
-```bash
-# Untuk SQLite (Development)
-set USE_SQLITE=True      # Windows
-export USE_SQLITE=True   # Linux/Mac
+
+## Prerequisites## 📋 Prerequisites
+
+
+
+- Python 3.8+- Python 3.8 atau lebih tinggi
+
+- PostgreSQL 12+ (opsional, SQLite untuk development)- PostgreSQL 12+ (opsional, bisa pakai SQLite untuk development)
+
+- pip- pip (Python package manager)
+
+
+
+## Installation## Installation
+
+
+
+### 1. Setup Environment### 1. Setup Environment
+
+```bash```bash
+
+python -m venv venvpython -m venv venv
+
+venv\Scripts\activate  # Windowsvenv\Scripts\activate  # Windows
+
+source venv/bin/activate  # Linux/Macsource venv/bin/activate  # Linux/Mac
+
+``````
+
+
+
+### 2. Install Dependencies### 2. Install Dependencies
+
+```bash```bash
+
+pip install -r requirements.txtpip install -r requirements.txt
+
+``````
+
+
+
+### 3. Environment Configuration (Optional)### 3. Environment Configuration (Optional)
+
+
+
+Create `.env` file:Create `.env` file:
+
+
+
+**Development (SQLite):****Development (SQLite):**
+
+```env```env
+
+SECRET_KEY=your-secret-key-hereSECRET_KEY=your-secret-key-here
+
+DEBUG=TrueDEBUG=True
+
+USE_SQLITE=TrueUSE_SQLITE=True
+
+CORS_ALLOW_ALL_ORIGINS=TrueCORS_ALLOW_ALL_ORIGINS=True
+
+``````
+
+
+
+**Production (PostgreSQL):****Production (PostgreSQL):**
+
+```env```env
+
+SECRET_KEY=your-secret-key-hereSECRET_KEY=your-secret-key-here
+
+DEBUG=FalseDEBUG=False
+
+USE_SQLITE=FalseUSE_SQLITE=False
+
+DB_NAME=precision_agricultureDB_NAME=precision_agriculture
+
+DB_USER=postgresDB_USER=postgres
+
+DB_PASSWORD=your_passwordDB_PASSWORD=your_password
+
+DB_HOST=localhostDB_HOST=localhost
+
+DB_PORT=5432DB_PORT=5432
+
+CORS_ALLOW_ALL_ORIGINS=FalseCORS_ALLOW_ALL_ORIGINS=False
+
+CORS_ALLOWED_ORIGINS=https://yourdomain.comCORS_ALLOWED_ORIGINS=https://yourdomain.com
+
+``````
+
+
+
+### 4. Run Migrations & Seed### 4. Run Migrations & Seed
+
+```bash```bash
+
+python manage.py migratepython manage.py migrate
+
+python manage.py seed_users  # Optional: create sample userspython manage.py seed_users  # Optional: create sample users
+
+``````
+
+
+
+### 5. Run Server### 5. Run Server
+
+```bash```bash
+
+python manage.py runserverpython manage.py runserver
+
+``````
+
+
+
+Server: `http://localhost:8000`Server: `http://localhost:8000`
+
+
+
+## Project Structure## Project Structure
+
+
+
+``````
+
+Precision-Agriculture-Platform-BE/Precision-Agriculture-Platform-BE/
+
+├── precision_agriculture/├── precision_agriculture/
+
+│   ├── settings.py          # Django settings + JWT config│   ├── settings.py          # Django settings + JWT config
+
+│   ├── urls.py              # Main URL routing│   ├── urls.py              # Main URL routing
+
+│   ├── wsgi.py│   ├── wsgi.py
+
+│   └── asgi.py│   └── asgi.py
+
+├── users/├── users/
+
+│   ├── migrations/│   ├── migrations/
+
+│   ├── management/│   ├── management/
+
+│   │   └── commands/│   │   └── commands/
+
+│   │       └── seed_users.py    # Create sample users│   │       └── seed_users.py    # Create sample users
+
+│   ├── models.py            # Custom User model│   ├── models.py            # Custom User model
+
+│   ├── serializers.py       # API serializers│   ├── serializers.py       # API serializers
+
+│   ├── views.py             # API views│   ├── views.py             # API views
+
+│   ├── urls.py              # Auth endpoints│   ├── urls.py              # Auth endpoints
+
+│   ├── admin.py│   ├── admin.py
+
+│   └── tests.py│   └── tests.py
+
+├── manage.py├── manage.py
+
+├── requirements.txt├── requirements.txt
+
+├── db.sqlite3               # SQLite DB (development)├── db.sqlite3               # SQLite DB (development)
+
+└── README.md└── README.md
+
+``````
+
+
+
+## API Endpoints## API Endpoints
+
+
+
+| Method | Endpoint | Auth || Method | Endpoint | Auth |
+
+|--------|----------|------||--------|----------|------|
+
+| POST | `/api/auth/register/` | No || POST | `/api/auth/register/` | No |
+
+| POST | `/api/auth/login/` | No || POST | `/api/auth/login/` | No |
+
+| POST | `/api/auth/logout/` | Yes || POST | `/api/auth/logout/` | Yes |
+
+| GET | `/api/auth/profile/` | Yes || GET | `/api/auth/profile/` | Yes |
+
+| PATCH | `/api/auth/profile/update/` | Yes || PATCH | `/api/auth/profile/update/` | Yes |
+
+| POST | `/api/auth/change-password/` | Yes || POST | `/api/auth/change-password/` | Yes |
+
+| POST | `/api/token/refresh/` | No || POST | `/api/token/refresh/` | No |
+
+
+
+**Admin Panel:** `http://localhost:8000/admin/`**Admin Panel:** `http://localhost:8000/admin/`
+
+
+
+## Quick Test## Quick Test
+
+
+
+### Register### Register
+
+```bash```bash
+
+curl -X POST http://localhost:8000/api/auth/register/ \curl -X POST http://localhost:8000/api/auth/register/ \
+
+  -H "Content-Type: application/json" \  -H "Content-Type: application/json" \
+
+  -d '{"email":"test@example.com","name":"Test User","password":"test123","confirm_password":"test123"}'  -d '{"email":"test@example.com","name":"Test User","password":"test123","confirm_password":"test123"}'
+
+``````
+
+
+
+### Login### Login
+
+```bash```bash
+
+curl -X POST http://localhost:8000/api/auth/login/ \curl -X POST http://localhost:8000/api/auth/login/ \
+
+  -H "Content-Type: application/json" \  -H "Content-Type: application/json" \
+
+  -d '{"email":"test@example.com","password":"test123"}'  -d '{"email":"test@example.com","password":"test123"}'
+
+``````
+
+
+
+### Get Profile### Get Profile
+
+```bash```bash
+
+curl -X GET http://localhost:8000/api/auth/profile/ \curl -X GET http://localhost:8000/api/auth/profile/ \
+
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+``````
+
+
+
+## Frontend Integration## Frontend Integration
+
+
+
+Frontend sudah terintegrasi di folder `../Precision-Agriculture-Platform-FE`Frontend sudah terintegrasi di folder `../Precision-Agriculture-Platform-FE`
+
+
+
+**API Service:** `src/services/api.js`  **API Service:** `src/services/api.js`  
+
+**Auth Context:** `src/contexts/AuthContext.jsx`**Auth Context:** `src/contexts/AuthContext.jsx`
+
+
+
+### Frontend .env### Frontend .env
+
+```env```env
+
+VITE_API_URL=http://localhost:8000/apiVITE_API_URL=http://localhost:8000/api
+
+``````
+
+
+
+## Development Commands## 🛠️ Development
+
+
+
+```bash### Run Tests
+
+python manage.py test                # Run tests```bash
+
+python manage.py makemigrations      # Create migrationspython manage.py test
+
+python manage.py migrate             # Apply migrations```
+
+python manage.py createsuperuser     # Create admin
+
+python manage.py shell               # Django shell### Create New Migration
+
+python manage.py collectstatic       # Collect static files```bash
+
+```python manage.py makemigrations
 
 python manage.py migrate
-```
 
-### 6. Create Superuser (Optional)
-```bash
-python manage.py createsuperuser
-```
+## Database Schema```
 
-### 7. Run Development Server
-```bash
-python manage.py runserver
-```
 
-Server akan berjalan di: `http://localhost:8000`
 
-## 📁 Project Structure
+### User Model### Collect Static Files
 
-```
-Precision-Agriculture-Platform-BE/
-├── precision_agriculture/        # Main project settings
-│   ├── __init__.py
-│   ├── settings.py              # Django settings dengan JWT config
-│   ├── urls.py                  # Main URL routing
-│   ├── wsgi.py                  # WSGI configuration
-│   └── asgi.py                  # ASGI configuration
-├── users/                       # Users app
-│   ├── migrations/              # Database migrations
-│   ├── __init__.py
-│   ├── admin.py                 # Admin configuration
-│   ├── apps.py                  # App configuration
-│   ├── models.py                # Custom User model
-│   ├── serializers.py           # API serializers
-│   ├── views.py                 # API views
-│   ├── urls.py                  # Users URL routing
-│   └── tests.py                 # Unit tests
-├── manage.py                    # Django management script
-├── requirements.txt             # Python dependencies
-├── db.sqlite3                   # SQLite database (development)
-├── API_DOCUMENTATION.md         # Complete API documentation
-├── frontend-integration-example.js  # Frontend integration guide
-└── README.md                    # This file
-```
+| Field | Type |```bash
 
-## 🔐 API Endpoints
+|-------|------|python manage.py collectstatic
 
-### Authentication Endpoints
+| id | Integer (PK) |```
 
-| Method | Endpoint | Description | Auth Required |
-|--------|----------|-------------|---------------|
-| POST | `/api/auth/register/` | Register user baru | No |
-| POST | `/api/auth/login/` | Login user | No |
-| POST | `/api/auth/logout/` | Logout user | Yes |
-| GET | `/api/auth/profile/` | Get user profile | Yes |
-| PUT/PATCH | `/api/auth/profile/update/` | Update user profile | Yes |
-| POST | `/api/auth/change-password/` | Change password | Yes |
+| email | Email (unique, username) |
 
-### Admin Panel
-- URL: `http://localhost:8000/admin/`
-- Manage users, view blacklisted tokens, dll.
+| name | String |### Run Shell
 
-**📖 Lihat [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) untuk dokumentasi lengkap**
+| company | String (optional) |```bash
 
-## 🎯 Quick Start Testing
+| password | String (hashed) |python manage.py shell
 
-### 1. Register User Baru
-```bash
-curl -X POST http://localhost:8000/api/auth/register/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "name": "Test User",
-    "company": "Test Company",
-    "password": "testpass123",
-    "confirm_password": "testpass123"
-  }'
-```
+| is_active | Boolean |```
 
-### 2. Login
-```bash
-curl -X POST http://localhost:8000/api/auth/login/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "testpass123"
-  }'
-```
+| is_staff | Boolean |
 
-### 3. Get Profile (dengan token)
-```bash
-curl -X GET http://localhost:8000/api/auth/profile/ \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
-```
+| is_superuser | Boolean |## 📊 Database Schema
 
-## 🔗 Frontend Integration
+| date_joined | DateTime |
 
-### Install API Service di Frontend
+| last_login | DateTime |### User Model
 
-Salin file `frontend-integration-example.js` ke frontend project Anda di `src/services/api.js`
-
-### Update .env di Frontend (Vite)
-```env
-VITE_API_URL=http://localhost:8000/api
-```
-
-### Contoh Penggunaan di React Component
-
-```javascript
-import apiService from '@/services/api';
-import { toast } from 'sonner';
-
-// Login
-const handleLogin = async (email, password) => {
-  try {
-    const response = await apiService.login(email, password);
-    onLogin(response.user);
-    toast.success('Login berhasil!');
-  } catch (error) {
-    toast.error(error.data?.error || 'Login gagal');
-  }
-};
-
-// Register
-const handleRegister = async (formData) => {
-  try {
-    const response = await apiService.register(formData);
-    onLogin(response.user);
-    toast.success('Registrasi berhasil!');
-  } catch (error) {
-    toast.error('Registrasi gagal');
-  }
-};
-```
-
-## 🛠️ Development
-
-### Run Tests
-```bash
-python manage.py test
-```
-
-### Create New Migration
-```bash
-python manage.py makemigrations
-python manage.py migrate
-```
-
-### Collect Static Files
-```bash
-python manage.py collectstatic
-```
-
-### Run Shell
-```bash
-python manage.py shell
-```
-
-## 📊 Database Schema
-
-### User Model
 | Field | Type | Description |
-|-------|------|-------------|
+
+## Sample Users (After Seed)|-------|------|-------------|
+
 | id | Integer | Primary key (auto) |
-| email | EmailField | Unique email (username field) |
-| name | CharField | User's full name |
-| company | CharField | Company name (optional) |
-| password | CharField | Hashed password |
-| is_active | Boolean | Account active status |
-| is_staff | Boolean | Staff status |
+
+| Email | Password | Role || email | EmailField | Unique email (username field) |
+
+|-------|----------|------|| name | CharField | User's full name |
+
+| admin@agriiweb.com | admin123 | Superuser || company | CharField | Company name (optional) |
+
+| demo@agriiweb.com | demo123 | User || password | CharField | Hashed password |
+
+| user1@agriiweb.com | password123 | User || is_active | Boolean | Account active status |
+
+| farmer@test.com | farmer123 | User || is_staff | Boolean | Staff status |
+
 | is_superuser | Boolean | Superuser status |
-| date_joined | DateTime | Registration date |
+
+## Security Notes| date_joined | DateTime | Registration date |
+
 | last_login | DateTime | Last login timestamp |
 
-## 🔒 Security Notes
+- Use HTTPS in production
 
-1. **HTTPS:** Gunakan HTTPS di production
-2. **Secret Key:** Generate secret key baru untuk production
-3. **CORS:** Konfigurasi CORS dengan benar (jangan `ALLOW_ALL` di production)
-4. **Database:** Gunakan PostgreSQL di production
+- Generate new SECRET_KEY## 🔒 Security Notes
+
+- Set `CORS_ALLOW_ALL_ORIGINS=False`
+
+- Use PostgreSQL in production1. **HTTPS:** Gunakan HTTPS di production
+
+- Don't commit `.env` file2. **Secret Key:** Generate secret key baru untuk production
+
+- Access token: 1 hour3. **CORS:** Konfigurasi CORS dengan benar (jangan `ALLOW_ALL` di production)
+
+- Refresh token: 7 days4. **Database:** Gunakan PostgreSQL di production
+
 5. **Environment Variables:** Jangan commit file `.env`
-6. **Token Storage:** Gunakan HttpOnly cookies untuk production
 
-## 🐛 Troubleshooting
+## Troubleshooting6. **Token Storage:** Gunakan HttpOnly cookies untuk production
 
-### PostgreSQL Connection Error
+
+
+**PostgreSQL Error:** Set `USE_SQLITE=True`  ## 🐛 Troubleshooting
+
+**CORS Error:** Add frontend URL to `CORS_ALLOWED_ORIGINS`  
+
+**Token Expired:** Use refresh token endpoint### PostgreSQL Connection Error
+
 Jika mendapat error koneksi PostgreSQL, gunakan SQLite untuk development:
-```bash
+
+## Dependencies```bash
+
 set USE_SQLITE=True
-```
 
-### Token Expired
-Token akan expired setelah:
-- Access Token: 1 jam
-- Refresh Token: 7 hari
+- Django 5.0+```
 
-Gunakan refresh token untuk mendapatkan access token baru.
+- djangorestframework 3.14+
 
-### CORS Error
-Pastikan frontend URL sudah ditambahkan di `CORS_ALLOWED_ORIGINS` di settings.
+- djangorestframework-simplejwt 5.3+### Token Expired
+
+- django-cors-headers 4.3+Token akan expired setelah:
+
+- psycopg2-binary 2.9+- Access Token: 1 jam
+
+- python-decouple 3.8+- Refresh Token: 7 hari
+
+
+
+## AuthorGunakan refresh token untuk mendapatkan access token baru.
+
+
+
+**Rifqi Afandi**  ### CORS Error
+
+GitHub: [@RifqiAfandi](https://github.com/RifqiAfandi)Pastikan frontend URL sudah ditambahkan di `CORS_ALLOWED_ORIGINS` di settings.
+
 
 ## 📝 Environment Variables
 
