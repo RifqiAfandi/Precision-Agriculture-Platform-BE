@@ -31,24 +31,6 @@ class Command(BaseCommand):
                 'company': 'Demo Company',
                 'password': 'demo123',
             },
-            {
-                'email': 'user1@agriiweb.com',
-                'name': 'John Doe',
-                'company': 'AgriTech Solutions',
-                'password': 'password123',
-            },
-            {
-                'email': 'user2@agriiweb.com',
-                'name': 'Jane Smith',
-                'company': 'Smart Farming Co',
-                'password': 'password123',
-            },
-            {
-                'email': 'farmer@test.com',
-                'name': 'Petani Sukses',
-                'company': 'Kebun Makmur',
-                'password': 'farmer123',
-            },
         ]
         
         created_count = 0
