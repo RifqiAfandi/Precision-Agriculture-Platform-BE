@@ -207,14 +207,18 @@ class KrigingAnalysisView(APIView):
                     'max_lng': data['max_lng'],
                 }
             
-            # Perform Kriging analysis
+            # Perform Kriging analysis with new parameters
             result = analyze_nitrogen_levels(
                 device_data=device_data,
                 grid_bounds=grid_bounds,
                 grid_resolution=data['grid_resolution'],
                 variogram_model=data['variogram_model'],
                 low_threshold=data['low_threshold'],
-                high_threshold=data['high_threshold']
+                high_threshold=data['high_threshold'],
+                influence_radius=data.get('influence_radius', 0.05),  # Default 50m
+                deficient_threshold=data.get('deficient_threshold', 1.80),
+                subnormal_threshold=data.get('subnormal_threshold', 2.71),
+                normal_threshold=data.get('normal_threshold', 3.31)
             )
             
             # Optionally save to database

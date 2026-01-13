@@ -114,11 +114,28 @@ class KrigingService:
     
     This service performs spatial interpolation of nitrogen (or other) values
     measured at specific device locations to predict values across an entire area.
+    
+    Features:
+    - Influence radius: Only areas within the radius of sensors show interpolated values
+    - Areas outside influence radius are marked as 'no_data' (neutral/gray)
+    - Each sensor has a configurable influence radius
     """
     
-    # Classification thresholds for nitrogen levels
-    DEFAULT_LOW_THRESHOLD = 1.5
-    DEFAULT_HIGH_THRESHOLD = 2.5
+    # Classification thresholds for nitrogen levels (based on actual nitrogen percentage)
+    # deficient: <1.80%
+    # subnormal: 1.80 - 2.71%
+    # normal: 2.71 - 3.31%
+    # high: >3.31%
+    DEFAULT_DEFICIENT_THRESHOLD = 1.80
+    DEFAULT_SUBNORMAL_THRESHOLD = 2.71
+    DEFAULT_NORMAL_THRESHOLD = 3.31
+    
+    # Legacy thresholds for backward compatibility
+    DEFAULT_LOW_THRESHOLD = 1.80
+    DEFAULT_HIGH_THRESHOLD = 3.31
+    
+    # Default influence radius in kilometers (0.05 km = 50 meters)
+    DEFAULT_INFLUENCE_RADIUS = 0.05
     
     # Variogram models available
     VARIOGRAM_MODELS = {
@@ -135,7 +152,11 @@ class KrigingService:
         sill: Optional[float] = None,
         range_param: Optional[float] = None,
         low_threshold: float = DEFAULT_LOW_THRESHOLD,
-        high_threshold: float = DEFAULT_HIGH_THRESHOLD
+        high_threshold: float = DEFAULT_HIGH_THRESHOLD,
+        influence_radius: float = DEFAULT_INFLUENCE_RADIUS,
+        deficient_threshold: float = DEFAULT_DEFICIENT_THRESHOLD,
+        subnormal_threshold: float = DEFAULT_SUBNORMAL_THRESHOLD,
+        normal_threshold: float = DEFAULT_NORMAL_THRESHOLD
     ):
         """
         Initialize the Kriging service.
@@ -145,8 +166,12 @@ class KrigingService:
             nugget: Nugget effect (discontinuity at origin). If None, will be estimated.
             sill: Sill value (plateau of variogram). If None, will be estimated.
             range_param: Range parameter (distance at which sill is reached). If None, will be estimated.
-            low_threshold: Threshold below which nitrogen is classified as LOW
-            high_threshold: Threshold above which nitrogen is classified as HIGH
+            low_threshold: Threshold below which nitrogen is classified as LOW (legacy)
+            high_threshold: Threshold above which nitrogen is classified as HIGH (legacy)
+            influence_radius: Maximum distance (in km) from a sensor for interpolation to apply
+            deficient_threshold: Threshold below which nitrogen is classified as DEFICIENT (<1.80%)
+            subnormal_threshold: Threshold for SUBNORMAL classification (1.80-2.71%)
+            normal_threshold: Threshold for NORMAL classification (2.71-3.31%), above is HIGH
         """
         if variogram_model not in self.VARIOGRAM_MODELS:
             raise ValueError(f"Unknown variogram model: {variogram_model}. "
@@ -159,6 +184,12 @@ class KrigingService:
         self.range_param = range_param
         self.low_threshold = low_threshold
         self.high_threshold = high_threshold
+        self.influence_radius = influence_radius
+        
+        # New threshold system
+        self.deficient_threshold = deficient_threshold
+        self.subnormal_threshold = subnormal_threshold
+        self.normal_threshold = normal_threshold
         
         # Will be set after fitting
         self._fitted = False
@@ -303,14 +334,35 @@ class KrigingService:
         self._fitted = True
         return self
     
-    def _classify_value(self, value: float) -> str:
-        """Classify a nitrogen value as low, normal, or high."""
-        if value < self.low_threshold:
-            return 'low'
-        elif value > self.high_threshold:
-            return 'high'
-        else:
+    def _classify_value(self, value: float, is_within_influence: bool = True) -> str:
+        """
+        Classify a nitrogen value based on thresholds.
+        
+        Categories (based on nitrogen percentage):
+        - deficient: <1.80% (Red)
+        - subnormal: 1.80-2.71% (Dark Orange)
+        - normal: 2.71-3.31% (Light Orange)
+        - high: >3.31% (Yellow)
+        - no_data: outside influence radius (Gray/Neutral)
+        
+        Args:
+            value: Nitrogen value to classify
+            is_within_influence: Whether the point is within sensor influence radius
+            
+        Returns:
+            Classification string
+        """
+        if not is_within_influence:
+            return 'no_data'
+        
+        if value < self.deficient_threshold:
+            return 'deficient'
+        elif value < self.subnormal_threshold:
+            return 'subnormal'
+        elif value < self.normal_threshold:
             return 'normal'
+        else:
+            return 'high'
     
     def predict(self, target_points: List[Tuple[float, float]]) -> List[KrigingResult]:
         """
@@ -329,16 +381,23 @@ class KrigingService:
         
         # Handle single point case
         if n == 1:
-            return [
-                KrigingResult(
+            results = []
+            for lat, lon in target_points:
+                # Check if within influence radius
+                dist = self._haversine_distance(
+                    lat, lon,
+                    self._coordinates[0][0], self._coordinates[0][1]
+                )
+                is_within = dist <= self.influence_radius
+                
+                results.append(KrigingResult(
                     latitude=lat,
                     longitude=lon,
-                    predicted_value=self._values[0],
+                    predicted_value=self._values[0] if is_within else 0.0,
                     variance=self.sill,
-                    classification=self._classify_value(self._values[0])
-                )
-                for lat, lon in target_points
-            ]
+                    classification=self._classify_value(self._values[0], is_within)
+                ))
+            return results
         
         # Build the Kriging matrix for known points
         dist_matrix = self._calculate_distance_matrix(self._coordinates)
@@ -390,12 +449,16 @@ class KrigingService:
                     predicted_value = np.sum(weights * self._values)
                     variance = self.sill
             
+            # Check if point is within influence radius of any sensor
+            min_distance = np.min(dist_to_target)
+            is_within_influence = min_distance <= self.influence_radius
+            
             results.append(KrigingResult(
                 latitude=lat,
                 longitude=lon,
-                predicted_value=float(predicted_value),
+                predicted_value=float(predicted_value) if is_within_influence else 0.0,
                 variance=float(variance),
-                classification=self._classify_value(predicted_value)
+                classification=self._classify_value(predicted_value, is_within_influence)
             ))
         
         return results
@@ -436,22 +499,40 @@ class KrigingService:
         Returns:
             Dictionary with statistics
         """
-        values = [r.predicted_value for r in results]
+        # Filter out no_data points for value calculations
+        data_results = [r for r in results if r.classification != 'no_data']
+        
+        if data_results:
+            values = [r.predicted_value for r in data_results]
+            min_val = float(np.min(values))
+            max_val = float(np.max(values))
+            mean_val = float(np.mean(values))
+            std_val = float(np.std(values))
+        else:
+            min_val = max_val = mean_val = std_val = 0.0
+        
         classifications = [r.classification for r in results]
         
         return {
-            'min_value': float(np.min(values)),
-            'max_value': float(np.max(values)),
-            'mean_value': float(np.mean(values)),
-            'std_value': float(np.std(values)),
-            'low_count': classifications.count('low'),
+            'min_value': min_val,
+            'max_value': max_val,
+            'mean_value': mean_val,
+            'std_value': std_val,
+            # New 4-category classification counts
+            'deficient_count': classifications.count('deficient'),
+            'subnormal_count': classifications.count('subnormal'),
             'normal_count': classifications.count('normal'),
             'high_count': classifications.count('high'),
+            'no_data_count': classifications.count('no_data'),
+            # Legacy counts for backward compatibility
+            'low_count': classifications.count('deficient') + classifications.count('subnormal'),
             'total_points': len(results),
+            'data_points': len(data_results),
             'variogram_model': self.variogram_model_name,
             'nugget': self.nugget,
             'sill': self.sill,
             'range': self.range_param,
+            'influence_radius': self.influence_radius,
         }
 
 
@@ -460,8 +541,12 @@ def analyze_nitrogen_levels(
     grid_bounds: Optional[Dict[str, float]] = None,
     grid_resolution: int = 20,
     variogram_model: str = 'spherical',
-    low_threshold: float = 1.5,
-    high_threshold: float = 2.5
+    low_threshold: float = 1.80,
+    high_threshold: float = 3.31,
+    influence_radius: float = 0.05,
+    deficient_threshold: float = 1.80,
+    subnormal_threshold: float = 2.71,
+    normal_threshold: float = 3.31
 ) -> Dict:
     """
     Main function to analyze nitrogen levels using Kriging interpolation.
@@ -471,8 +556,12 @@ def analyze_nitrogen_levels(
         grid_bounds: Optional bounds for grid generation. If None, calculated from data.
         grid_resolution: Number of grid points per axis
         variogram_model: Variogram model to use
-        low_threshold: Nitrogen threshold for LOW classification
-        high_threshold: Nitrogen threshold for HIGH classification
+        low_threshold: Nitrogen threshold for LOW classification (legacy)
+        high_threshold: Nitrogen threshold for HIGH classification (legacy)
+        influence_radius: Maximum distance (in km) from sensors for interpolation (default 50m)
+        deficient_threshold: Threshold for DEFICIENT classification (<1.80%)
+        subnormal_threshold: Threshold for SUBNORMAL classification (1.80-2.71%)
+        normal_threshold: Threshold for NORMAL classification (2.71-3.31%), above is HIGH
         
     Returns:
         Dictionary with analysis results including:
@@ -484,11 +573,15 @@ def analyze_nitrogen_levels(
     if not device_data:
         raise ValueError("No device data provided for analysis")
     
-    # Initialize and fit the Kriging service
+    # Initialize and fit the Kriging service with new parameters
     kriging = KrigingService(
         variogram_model=variogram_model,
         low_threshold=low_threshold,
-        high_threshold=high_threshold
+        high_threshold=high_threshold,
+        influence_radius=influence_radius,
+        deficient_threshold=deficient_threshold,
+        subnormal_threshold=subnormal_threshold,
+        normal_threshold=normal_threshold
     )
     kriging.fit(device_data)
     
@@ -544,10 +637,14 @@ def analyze_nitrogen_levels(
             'nugget': kriging.nugget,
             'sill': kriging.sill,
             'range': kriging.range_param,
+            'influence_radius': influence_radius,
         },
         'bounds': grid_bounds,
         'thresholds': {
             'low': low_threshold,
             'high': high_threshold,
+            'deficient': deficient_threshold,
+            'subnormal': subnormal_threshold,
+            'normal': normal_threshold,
         }
     }

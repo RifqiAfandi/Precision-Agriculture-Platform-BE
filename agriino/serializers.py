@@ -206,8 +206,14 @@ class KrigingAnalysisRequestSerializer(serializers.Serializer):
         choices=['spherical', 'exponential', 'gaussian', 'linear'],
         default='spherical'
     )
-    low_threshold = serializers.FloatField(default=1.5)
-    high_threshold = serializers.FloatField(default=2.5)
+    low_threshold = serializers.FloatField(default=1.80)
+    high_threshold = serializers.FloatField(default=3.31)
+    
+    # New threshold parameters for 4-category classification
+    influence_radius = serializers.FloatField(default=0.05)  # Default 50m in km
+    deficient_threshold = serializers.FloatField(default=1.80)
+    subnormal_threshold = serializers.FloatField(default=2.71)
+    normal_threshold = serializers.FloatField(default=3.31)
     
     # Optional custom bounds
     min_lat = serializers.FloatField(required=False, allow_null=True)
@@ -227,7 +233,7 @@ class KrigingGridPointResponseSerializer(serializers.Serializer):
     longitude = serializers.FloatField()
     predicted_value = serializers.FloatField()
     variance = serializers.FloatField()
-    classification = serializers.ChoiceField(choices=['low', 'normal', 'high'])
+    classification = serializers.ChoiceField(choices=['deficient', 'subnormal', 'normal', 'high', 'no_data'])
 
 
 class InputPointResponseSerializer(serializers.Serializer):
@@ -236,7 +242,7 @@ class InputPointResponseSerializer(serializers.Serializer):
     longitude = serializers.FloatField()
     nitrogen = serializers.FloatField()
     predicted_value = serializers.FloatField()
-    classification = serializers.ChoiceField(choices=['low', 'normal', 'high'])
+    classification = serializers.ChoiceField(choices=['deficient', 'subnormal', 'normal', 'high', 'no_data'])
 
 
 class StatisticsResponseSerializer(serializers.Serializer):
@@ -245,14 +251,21 @@ class StatisticsResponseSerializer(serializers.Serializer):
     max_value = serializers.FloatField()
     mean_value = serializers.FloatField()
     std_value = serializers.FloatField()
-    low_count = serializers.IntegerField()
+    # New 4-category counts
+    deficient_count = serializers.IntegerField()
+    subnormal_count = serializers.IntegerField()
     normal_count = serializers.IntegerField()
     high_count = serializers.IntegerField()
+    no_data_count = serializers.IntegerField()
+    # Legacy
+    low_count = serializers.IntegerField()
     total_points = serializers.IntegerField()
+    data_points = serializers.IntegerField()
     variogram_model = serializers.CharField()
     nugget = serializers.FloatField()
     sill = serializers.FloatField()
     range = serializers.FloatField()
+    influence_radius = serializers.FloatField()
 
 
 class KrigingAnalysisResponseSerializer(serializers.Serializer):
