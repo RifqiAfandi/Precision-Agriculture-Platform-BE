@@ -3,6 +3,11 @@ Kriging Interpolation Service for Precision Agriculture
 
 This module implements Ordinary Kriging for spatial interpolation of agricultural data,
 specifically designed for nitrogen level analysis across farm areas.
+
+Features:
+- Variogram modeling (spherical, exponential, gaussian, linear)
+- Search neighborhood optimization for local kriging
+- Classification of nitrogen levels (DEFICIENT, SUBNORMAL, NORMAL, HIGH)
 """
 
 import numpy as np
