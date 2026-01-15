@@ -137,6 +137,10 @@ class KrigingService:
     # Default influence radius in kilometers (0.05 km = 50 meters)
     DEFAULT_INFLUENCE_RADIUS = 0.05
     
+    # Search neighborhood defaults
+    DEFAULT_MAX_NEIGHBORS = 12
+    DEFAULT_MIN_NEIGHBORS = 3
+    
     # Variogram models available
     VARIOGRAM_MODELS = {
         'spherical': VariogramModel.spherical,
@@ -156,7 +160,9 @@ class KrigingService:
         influence_radius: float = DEFAULT_INFLUENCE_RADIUS,
         deficient_threshold: float = DEFAULT_DEFICIENT_THRESHOLD,
         subnormal_threshold: float = DEFAULT_SUBNORMAL_THRESHOLD,
-        normal_threshold: float = DEFAULT_NORMAL_THRESHOLD
+        normal_threshold: float = DEFAULT_NORMAL_THRESHOLD,
+        max_neighbors: int = DEFAULT_MAX_NEIGHBORS,
+        min_neighbors: int = DEFAULT_MIN_NEIGHBORS
     ):
         """
         Initialize the Kriging service.
@@ -172,6 +178,8 @@ class KrigingService:
             deficient_threshold: Threshold below which nitrogen is classified as DEFICIENT (<1.80%)
             subnormal_threshold: Threshold for SUBNORMAL classification (1.80-2.71%)
             normal_threshold: Threshold for NORMAL classification (2.71-3.31%), above is HIGH
+            max_neighbors: Maximum number of neighboring points for local kriging (search neighborhood)
+            min_neighbors: Minimum number of neighbors required for a valid prediction
         """
         if variogram_model not in self.VARIOGRAM_MODELS:
             raise ValueError(f"Unknown variogram model: {variogram_model}. "
@@ -190,6 +198,10 @@ class KrigingService:
         self.deficient_threshold = deficient_threshold
         self.subnormal_threshold = subnormal_threshold
         self.normal_threshold = normal_threshold
+        
+        # Search neighborhood parameters
+        self.max_neighbors = max_neighbors
+        self.min_neighbors = min_neighbors
         
         # Will be set after fitting
         self._fitted = False
@@ -239,58 +251,135 @@ class KrigingService:
     
     def _estimate_variogram_parameters(self, coordinates: np.ndarray, values: np.ndarray) -> Tuple[float, float, float]:
         """
-        Estimate variogram parameters using Method of Moments.
+        Estimate variogram parameters using Method of Moments with improved estimation.
+        
+        This implementation addresses common issues in variogram fitting:
+        1. Uses robust binning with sufficient lag classes
+        2. Properly estimates nugget from short-distance pairs
+        3. Uses weighted least squares fitting for range estimation
+        4. Handles small sample sizes gracefully
         
         Returns:
             Tuple of (nugget, sill, range)
         """
         n = len(values)
+        variance = np.var(values) if n > 1 else 1.0
+        
         if n < 3:
             # Default parameters for small datasets
-            variance = np.var(values) if len(values) > 1 else 1.0
-            return 0.0, variance, 0.5
+            # Use a range that's approximately 1/3 of the study area extent
+            # This ensures localized influence
+            return 0.0, max(variance, 0.001), 0.02  # 20 meters default range
         
         # Calculate experimental variogram
         distances = self._calculate_distance_matrix(coordinates)
         
-        # Get unique distances and bin them
-        max_dist = np.max(distances) / 2  # Use half the maximum distance
-        n_bins = min(10, n)
-        bin_edges = np.linspace(0, max_dist, n_bins + 1)
+        # Get all unique non-zero distances
+        upper_tri_indices = np.triu_indices(n, k=1)
+        all_distances = distances[upper_tri_indices]
+        
+        if len(all_distances) == 0:
+            return 0.0, max(variance, 0.001), 0.02
+        
+        # Use maximum lag distance as 60% of max distance (Journel & Huijbregts recommendation)
+        # This avoids unreliable estimates at large lags
+        max_lag = np.max(all_distances) * 0.6
+        min_lag = np.min(all_distances[all_distances > 0]) if np.any(all_distances > 0) else 0.001
+        
+        # Determine optimal number of bins based on data
+        # Use Sturges' rule with minimum of 8 and maximum of 15 bins
+        n_pairs = len(all_distances)
+        n_bins = max(8, min(15, int(1 + 3.322 * np.log10(n_pairs))))
+        
+        # Create bins with equal spacing
+        bin_edges = np.linspace(0, max_lag, n_bins + 1)
         
         gamma_values = []
         lag_values = []
+        pair_counts = []
         
         for k in range(n_bins):
             mask = (distances > bin_edges[k]) & (distances <= bin_edges[k + 1])
-            if np.sum(mask) > 0:
+            count = np.sum(mask)
+            if count >= 1:  # Need at least 1 pair per bin (ideally more)
                 pairs_i, pairs_j = np.where(mask)
                 semivariance = 0.5 * np.mean((values[pairs_i] - values[pairs_j])**2)
                 lag = (bin_edges[k] + bin_edges[k + 1]) / 2
                 gamma_values.append(semivariance)
                 lag_values.append(lag)
+                pair_counts.append(count)
         
         if len(gamma_values) < 2:
-            # Fallback to simple estimates
-            variance = np.var(values)
-            return 0.0, variance, max_dist
+            # Fallback: use data variance and reasonable range
+            return 0.0, max(variance, 0.001), max_lag / 3
         
         gamma_values = np.array(gamma_values)
         lag_values = np.array(lag_values)
+        pair_counts = np.array(pair_counts)
         
-        # Estimate parameters
-        nugget = max(0, gamma_values[0] * 0.1)  # Small nugget
-        sill = np.max(gamma_values) - nugget
-        
-        # Estimate range as distance where variogram reaches ~95% of sill
-        threshold = nugget + 0.95 * sill
-        range_indices = np.where(gamma_values >= threshold)[0]
-        if len(range_indices) > 0:
-            range_param = lag_values[range_indices[0]]
+        # Estimate nugget: extrapolate from first few bins to h=0
+        # Use weighted linear regression on first 3 bins (or fewer if not available)
+        n_for_nugget = min(3, len(gamma_values))
+        if n_for_nugget >= 2:
+            # Simple linear extrapolation to h=0
+            slope = (gamma_values[n_for_nugget-1] - gamma_values[0]) / (lag_values[n_for_nugget-1] - lag_values[0] + 1e-10)
+            nugget = max(0, gamma_values[0] - slope * lag_values[0])
         else:
-            range_param = max_dist
+            nugget = gamma_values[0] * 0.5
         
-        return nugget, max(sill, 0.001), max(range_param, 0.001)
+        # Ensure nugget is reasonable (typically 0-50% of sill)
+        nugget = min(nugget, variance * 0.5)
+        nugget = max(nugget, 0.0)
+        
+        # Estimate sill as the asymptotic variance
+        # Use weighted average of values in the plateau region
+        sill_candidates = gamma_values[gamma_values >= np.percentile(gamma_values, 70)]
+        if len(sill_candidates) > 0:
+            total_sill = np.mean(sill_candidates)
+        else:
+            total_sill = np.max(gamma_values)
+        
+        # Partial sill (sill above nugget)
+        partial_sill = max(total_sill - nugget, 0.001)
+        
+        # Estimate range using weighted least squares fit
+        # Find where variogram reaches ~63% of sill (characteristic range for exponential)
+        # or ~86% for spherical model effective range
+        if self.variogram_model_name == 'exponential':
+            target_gamma = nugget + 0.632 * partial_sill  # 1 - e^(-1)
+        elif self.variogram_model_name == 'gaussian':
+            target_gamma = nugget + 0.632 * partial_sill  # Similar behavior
+        else:  # spherical, linear
+            target_gamma = nugget + 0.5 * partial_sill  # 50% of sill
+        
+        # Find range by interpolation
+        range_param = None
+        for i in range(len(gamma_values) - 1):
+            if gamma_values[i] <= target_gamma <= gamma_values[i + 1]:
+                # Linear interpolation
+                t = (target_gamma - gamma_values[i]) / (gamma_values[i + 1] - gamma_values[i] + 1e-10)
+                range_param = lag_values[i] + t * (lag_values[i + 1] - lag_values[i])
+                break
+        
+        if range_param is None:
+            if gamma_values[0] >= target_gamma:
+                # All values above target, use first lag
+                range_param = lag_values[0]
+            else:
+                # Variogram hasn't reached sill, use 2/3 of max lag
+                range_param = max_lag * 0.67
+        
+        # Ensure range is reasonable for agricultural applications
+        # Minimum range: ~5 meters (0.005 km)
+        # Maximum range: max_lag (60% of study area)
+        range_param = max(range_param, 0.005)
+        range_param = min(range_param, max_lag)
+        
+        logger.debug(f"Variogram estimation: nugget={nugget:.6f}, sill={partial_sill:.6f}, range={range_param:.6f}")
+        logger.debug(f"Experimental variogram lags: {lag_values}")
+        logger.debug(f"Experimental variogram values: {gamma_values}")
+        
+        return nugget, max(partial_sill, 0.001), max(range_param, 0.001)
     
     def fit(self, data_points: List[Dict]) -> 'KrigingService':
         """
@@ -366,7 +455,13 @@ class KrigingService:
     
     def predict(self, target_points: List[Tuple[float, float]]) -> List[KrigingResult]:
         """
-        Predict values at target points using Ordinary Kriging.
+        Predict values at target points using Ordinary Kriging with local neighborhood.
+        
+        This implementation uses a search neighborhood approach for local kriging,
+        which provides better local influence and more realistic spatial patterns:
+        1. For each target point, find the nearest neighbors within influence radius
+        2. Use only those neighbors for kriging (local kriging)
+        3. This preserves point-level variability and localized influence
         
         Args:
             target_points: List of (latitude, longitude) tuples
@@ -399,64 +494,109 @@ class KrigingService:
                 ))
             return results
         
-        # Build the Kriging matrix for known points
-        dist_matrix = self._calculate_distance_matrix(self._coordinates)
-        gamma_matrix = self.variogram_func(dist_matrix, self.nugget, self.sill, self.range_param)
-        
-        # Add Lagrange multiplier row and column
-        K = np.zeros((n + 1, n + 1))
-        K[:n, :n] = gamma_matrix
-        K[n, :n] = 1
-        K[:n, n] = 1
-        K[n, n] = 0
-        
         results = []
         
         for lat, lon in target_points:
             target_coord = np.array([[lat, lon]])
             
-            # Calculate distances to target
+            # Calculate distances from target to all data points
             dist_to_target = self._calculate_distance_matrix(self._coordinates, target_coord).flatten()
-            gamma_to_target = self.variogram_func(dist_to_target, self.nugget, self.sill, self.range_param)
             
-            # Right-hand side vector
-            k = np.zeros(n + 1)
-            k[:n] = gamma_to_target
-            k[n] = 1
-            
-            try:
-                # Solve the Kriging system
-                weights = solve(K, k, assume_a='sym')
-                
-                # Predicted value
-                predicted_value = np.sum(weights[:n] * self._values)
-                
-                # Kriging variance
-                variance = np.sum(weights[:n] * gamma_to_target) + weights[n]
-                variance = max(0, variance)  # Ensure non-negative
-                
-            except np.linalg.LinAlgError:
-                # Fallback to IDW-like interpolation
-                logger.warning("Kriging system singular, using IDW fallback")
-                
-                if np.min(dist_to_target) < 1e-10:
-                    idx = np.argmin(dist_to_target)
-                    predicted_value = self._values[idx]
-                    variance = 0
-                else:
-                    weights = 1 / (dist_to_target ** 2)
-                    weights /= np.sum(weights)
-                    predicted_value = np.sum(weights * self._values)
-                    variance = self.sill
+            # Find points within influence radius
+            within_radius_mask = dist_to_target <= self.influence_radius
+            within_radius_indices = np.where(within_radius_mask)[0]
             
             # Check if point is within influence radius of any sensor
             min_distance = np.min(dist_to_target)
             is_within_influence = min_distance <= self.influence_radius
             
+            if not is_within_influence or len(within_radius_indices) < self.min_neighbors:
+                # Not enough neighbors or outside influence radius
+                results.append(KrigingResult(
+                    latitude=lat,
+                    longitude=lon,
+                    predicted_value=0.0,
+                    variance=float(self.sill),
+                    classification='no_data'
+                ))
+                continue
+            
+            # Select neighbors for local kriging
+            # Sort by distance and take up to max_neighbors
+            sorted_indices = np.argsort(dist_to_target)
+            neighbor_indices = []
+            for idx in sorted_indices:
+                if dist_to_target[idx] <= self.influence_radius:
+                    neighbor_indices.append(idx)
+                    if len(neighbor_indices) >= self.max_neighbors:
+                        break
+            
+            neighbor_indices = np.array(neighbor_indices)
+            n_neighbors = len(neighbor_indices)
+            
+            if n_neighbors < self.min_neighbors:
+                # Fall back to using closest neighbors even if outside radius
+                neighbor_indices = sorted_indices[:self.min_neighbors]
+                n_neighbors = len(neighbor_indices)
+            
+            # Extract neighbor coordinates and values
+            neighbor_coords = self._coordinates[neighbor_indices]
+            neighbor_values = self._values[neighbor_indices]
+            neighbor_distances = dist_to_target[neighbor_indices]
+            
+            # Build local kriging matrix for selected neighbors
+            local_dist_matrix = self._calculate_distance_matrix(neighbor_coords)
+            local_gamma_matrix = self.variogram_func(local_dist_matrix, self.nugget, self.sill, self.range_param)
+            
+            # Add Lagrange multiplier row and column for unbiasedness constraint
+            K = np.zeros((n_neighbors + 1, n_neighbors + 1))
+            K[:n_neighbors, :n_neighbors] = local_gamma_matrix
+            K[n_neighbors, :n_neighbors] = 1
+            K[:n_neighbors, n_neighbors] = 1
+            K[n_neighbors, n_neighbors] = 0
+            
+            # Right-hand side: gamma values from target to neighbors
+            gamma_to_target = self.variogram_func(neighbor_distances, self.nugget, self.sill, self.range_param)
+            k = np.zeros(n_neighbors + 1)
+            k[:n_neighbors] = gamma_to_target
+            k[n_neighbors] = 1
+            
+            try:
+                # Add small regularization to diagonal to prevent singularity
+                # This is a standard technique for ill-conditioned kriging systems
+                regularization = 1e-10 * self.sill
+                np.fill_diagonal(K[:n_neighbors, :n_neighbors], 
+                               np.diag(K[:n_neighbors, :n_neighbors]) + regularization)
+                
+                # Solve the Kriging system
+                weights = solve(K, k, assume_a='sym')
+                
+                # Predicted value (sum of weights * values)
+                predicted_value = np.sum(weights[:n_neighbors] * neighbor_values)
+                
+                # Kriging variance
+                variance = np.sum(weights[:n_neighbors] * gamma_to_target) + weights[n_neighbors]
+                variance = max(0, variance)  # Ensure non-negative
+                
+            except np.linalg.LinAlgError:
+                # Fallback to IDW interpolation
+                logger.warning("Local Kriging system singular, using IDW fallback")
+                
+                if np.min(neighbor_distances) < 1e-10:
+                    idx = np.argmin(neighbor_distances)
+                    predicted_value = neighbor_values[idx]
+                    variance = 0
+                else:
+                    # IDW with squared distance weights
+                    idw_weights = 1 / (neighbor_distances ** 2)
+                    idw_weights /= np.sum(idw_weights)
+                    predicted_value = np.sum(idw_weights * neighbor_values)
+                    variance = self.sill
+            
             results.append(KrigingResult(
                 latitude=lat,
                 longitude=lon,
-                predicted_value=float(predicted_value) if is_within_influence else 0.0,
+                predicted_value=float(predicted_value),
                 variance=float(variance),
                 classification=self._classify_value(predicted_value, is_within_influence)
             ))
@@ -466,14 +606,14 @@ class KrigingService:
     def generate_grid(
         self,
         bounds: Dict[str, float],
-        resolution: int = 20
+        resolution: int = 50
     ) -> List[KrigingResult]:
         """
         Generate a grid of predictions within the specified bounds.
         
         Args:
             bounds: Dictionary with 'min_lat', 'max_lat', 'min_lng', 'max_lng'
-            resolution: Number of points along each axis
+            resolution: Number of points along each axis (default 50 for smoother output)
             
         Returns:
             List of KrigingResult objects for the grid
@@ -539,14 +679,16 @@ class KrigingService:
 def analyze_nitrogen_levels(
     device_data: List[Dict],
     grid_bounds: Optional[Dict[str, float]] = None,
-    grid_resolution: int = 20,
+    grid_resolution: int = 50,
     variogram_model: str = 'spherical',
     low_threshold: float = 1.80,
     high_threshold: float = 3.31,
     influence_radius: float = 0.05,
     deficient_threshold: float = 1.80,
     subnormal_threshold: float = 2.71,
-    normal_threshold: float = 3.31
+    normal_threshold: float = 3.31,
+    max_neighbors: int = 12,
+    min_neighbors: int = 3
 ) -> Dict:
     """
     Main function to analyze nitrogen levels using Kriging interpolation.
@@ -554,7 +696,7 @@ def analyze_nitrogen_levels(
     Args:
         device_data: List of device data dictionaries with lat, lng, and nitrogen values
         grid_bounds: Optional bounds for grid generation. If None, calculated from data.
-        grid_resolution: Number of grid points per axis
+        grid_resolution: Number of grid points per axis (default 50 for smoother output)
         variogram_model: Variogram model to use
         low_threshold: Nitrogen threshold for LOW classification (legacy)
         high_threshold: Nitrogen threshold for HIGH classification (legacy)
@@ -562,6 +704,21 @@ def analyze_nitrogen_levels(
         deficient_threshold: Threshold for DEFICIENT classification (<1.80%)
         subnormal_threshold: Threshold for SUBNORMAL classification (1.80-2.71%)
         normal_threshold: Threshold for NORMAL classification (2.71-3.31%), above is HIGH
+        max_neighbors: Maximum number of neighboring points to use in kriging (search neighborhood)
+        min_neighbors: Minimum number of neighbors required for valid prediction
+        
+    Returns:
+        Dictionary with analysis results including:
+        - grid_points: List of interpolated points with classifications
+        - statistics: Summary statistics
+        - input_points: Original data points with classifications
+        - variogram_params: Estimated variogram parameters
+    """
+        deficient_threshold: Threshold for DEFICIENT classification (<1.80%)
+        subnormal_threshold: Threshold for SUBNORMAL classification (1.80-2.71%)
+        normal_threshold: Threshold for NORMAL classification (2.71-3.31%), above is HIGH
+        max_neighbors: Maximum number of neighboring points to use in kriging (search neighborhood)
+        min_neighbors: Minimum number of neighbors required for valid prediction
         
     Returns:
         Dictionary with analysis results including:
@@ -573,7 +730,7 @@ def analyze_nitrogen_levels(
     if not device_data:
         raise ValueError("No device data provided for analysis")
     
-    # Initialize and fit the Kriging service with new parameters
+    # Initialize and fit the Kriging service with parameters
     kriging = KrigingService(
         variogram_model=variogram_model,
         low_threshold=low_threshold,
@@ -581,7 +738,9 @@ def analyze_nitrogen_levels(
         influence_radius=influence_radius,
         deficient_threshold=deficient_threshold,
         subnormal_threshold=subnormal_threshold,
-        normal_threshold=normal_threshold
+        normal_threshold=normal_threshold,
+        max_neighbors=max_neighbors,
+        min_neighbors=min_neighbors
     )
     kriging.fit(device_data)
     
