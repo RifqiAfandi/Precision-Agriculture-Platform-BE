@@ -714,19 +714,6 @@ def analyze_nitrogen_levels(
         - input_points: Original data points with classifications
         - variogram_params: Estimated variogram parameters
     """
-        deficient_threshold: Threshold for DEFICIENT classification (<1.80%)
-        subnormal_threshold: Threshold for SUBNORMAL classification (1.80-2.71%)
-        normal_threshold: Threshold for NORMAL classification (2.71-3.31%), above is HIGH
-        max_neighbors: Maximum number of neighboring points to use in kriging (search neighborhood)
-        min_neighbors: Minimum number of neighbors required for valid prediction
-        
-    Returns:
-        Dictionary with analysis results including:
-        - grid_points: List of interpolated points with classifications
-        - statistics: Summary statistics
-        - input_points: Original data points with classifications
-        - variogram_params: Estimated variogram parameters
-    """
     if not device_data:
         raise ValueError("No device data provided for analysis")
     
