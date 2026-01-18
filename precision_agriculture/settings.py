@@ -25,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-c25il^a5qj6hqrg68b!ywi6%gwx)_rb8@rmaff^mo)ml#epogc')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
 
@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'users',
+    'agriino',
 ]
 
 MIDDLEWARE = [
@@ -95,11 +96,11 @@ else:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('DB_NAME', default='precision_agriculture'),
-            'USER': config('DB_USER', default='postgres'),
-            'PASSWORD': config('DB_PASSWORD', default='postgres'),
-            'HOST': config('DB_HOST', default='localhost'),
-            'PORT': config('DB_PORT', default='5432'),
+            'NAME': config('DB_NAME'),
+            'USER': config('DB_USER'),
+            'PASSWORD': config('DB_PASSWORD'),
+            'HOST': config('DB_HOST'),
+            'PORT': config('DB_PORT'),
         }
     }
 
@@ -156,6 +157,11 @@ CORS_ALLOWED_ORIGINS = config(
 
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'
+
+# Authentication Backends
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+]
 
 # Django REST Framework Settings
 REST_FRAMEWORK = {
