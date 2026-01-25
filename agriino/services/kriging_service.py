@@ -121,8 +121,8 @@ class KrigingService:
     measured at specific device locations to predict values across an entire area.
     
     Features:
-    - Influence radius: Only areas within the radius of sensors show interpolated values
-    - Areas outside influence radius are marked as 'no_data' (neutral/gray)
+    - Influence radius: Areas within radius use precise kriging interpolation
+    - Areas outside influence radius are classified as 'normal' (orange) by default
     - Each sensor has a configurable influence radius
     """
     
@@ -437,7 +437,7 @@ class KrigingService:
         - subnormal: 1.80-2.71% (Dark Orange)
         - normal: 2.71-3.31% (Light Orange)
         - high: >3.31% (Yellow)
-        - no_data: outside influence radius (Gray/Neutral)
+        - no_data: outside influence radius - now treated as 'normal' (Orange)
         
         Args:
             value: Nitrogen value to classify
@@ -447,7 +447,8 @@ class KrigingService:
             Classification string
         """
         if not is_within_influence:
-            return 'no_data'
+            # Areas outside influence radius default to 'normal' classification
+            return 'normal'
         
         if value < self.deficient_threshold:
             return 'deficient'
@@ -516,13 +517,23 @@ class KrigingService:
             is_within_influence = min_distance <= self.influence_radius
             
             if not is_within_influence or len(within_radius_indices) < self.min_neighbors:
-                # Not enough neighbors or outside influence radius
+                # Not enough neighbors or outside influence radius - default to normal
+                # Calculate IDW value from all neighbors for better estimation
+                all_distances = dist_to_target
+                valid_mask = all_distances > 0
+                if np.any(valid_mask):
+                    idw_weights = 1 / (all_distances[valid_mask] ** 2)
+                    idw_weights /= np.sum(idw_weights)
+                    interpolated_value = float(np.sum(idw_weights * self._values[valid_mask]))
+                else:
+                    interpolated_value = float(np.mean(self._values)) if len(self._values) > 0 else 2.5
+                
                 results.append(KrigingResult(
                     latitude=lat,
                     longitude=lon,
-                    predicted_value=0.0,
+                    predicted_value=interpolated_value,
                     variance=float(self.sill),
-                    classification='no_data'
+                    classification=self._classify_value(interpolated_value, True)
                 ))
                 continue
             
@@ -644,8 +655,8 @@ class KrigingService:
         Returns:
             Dictionary with statistics
         """
-        # Filter out no_data points for value calculations
-        data_results = [r for r in results if r.classification != 'no_data']
+        # All points now have valid classifications (no more no_data)
+        data_results = [r for r in results if r.predicted_value > 0]
         
         if data_results:
             values = [r.predicted_value for r in data_results]
@@ -666,9 +677,9 @@ class KrigingService:
             # New 4-category classification counts
             'deficient_count': classifications.count('deficient'),
             'subnormal_count': classifications.count('subnormal'),
-            'normal_count': classifications.count('normal'),
+            'normal_count': classifications.count('normal'),  # Now includes former no_data areas
             'high_count': classifications.count('high'),
-            'no_data_count': classifications.count('no_data'),
+            'no_data_count': 0,  # No longer used - areas default to normal
             # Legacy counts for backward compatibility
             'low_count': classifications.count('deficient') + classifications.count('subnormal'),
             'total_points': len(results),
