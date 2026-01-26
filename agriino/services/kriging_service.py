@@ -17,6 +17,18 @@ from scipy.spatial.distance import cdist
 from scipy.linalg import solve
 import logging
 
+from ..constants import (
+    DEFAULT_DEFICIENT_THRESHOLD,
+    DEFAULT_SUBNORMAL_THRESHOLD,
+    DEFAULT_NORMAL_THRESHOLD,
+    DEFAULT_LOW_THRESHOLD,
+    DEFAULT_HIGH_THRESHOLD,
+    DEFAULT_INFLUENCE_RADIUS_KM,
+    DEFAULT_MAX_NEIGHBORS,
+    DEFAULT_MIN_NEIGHBORS,
+    DEFAULT_GRID_RESOLUTION,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -126,25 +138,9 @@ class KrigingService:
     - Each sensor has a configurable influence radius
     """
     
+    # Use constants from agriino.constants module
     # Classification thresholds for nitrogen levels (based on actual nitrogen percentage)
-    # deficient: <1.80%
-    # subnormal: 1.80 - 2.71%
-    # normal: 2.71 - 3.31%
-    # high: >3.31%
-    DEFAULT_DEFICIENT_THRESHOLD = 1.80
-    DEFAULT_SUBNORMAL_THRESHOLD = 2.71
-    DEFAULT_NORMAL_THRESHOLD = 3.31
-    
-    # Legacy thresholds for backward compatibility
-    DEFAULT_LOW_THRESHOLD = 1.80
-    DEFAULT_HIGH_THRESHOLD = 3.31
-    
-    # Default influence radius in kilometers (0.05 km = 50 meters)
-    DEFAULT_INFLUENCE_RADIUS = 0.05
-    
-    # Search neighborhood defaults
-    DEFAULT_MAX_NEIGHBORS = 12
-    DEFAULT_MIN_NEIGHBORS = 3
+    # deficient: <1.80%, subnormal: 1.80 - 2.71%, normal: 2.71 - 3.31%, high: >3.31%
     
     # Variogram models available
     VARIOGRAM_MODELS = {
@@ -162,7 +158,7 @@ class KrigingService:
         range_param: Optional[float] = None,
         low_threshold: float = DEFAULT_LOW_THRESHOLD,
         high_threshold: float = DEFAULT_HIGH_THRESHOLD,
-        influence_radius: float = DEFAULT_INFLUENCE_RADIUS,
+        influence_radius: float = DEFAULT_INFLUENCE_RADIUS_KM,
         deficient_threshold: float = DEFAULT_DEFICIENT_THRESHOLD,
         subnormal_threshold: float = DEFAULT_SUBNORMAL_THRESHOLD,
         normal_threshold: float = DEFAULT_NORMAL_THRESHOLD,
@@ -695,16 +691,16 @@ class KrigingService:
 def analyze_nitrogen_levels(
     device_data: List[Dict],
     grid_bounds: Optional[Dict[str, float]] = None,
-    grid_resolution: int = 50,
+    grid_resolution: int = DEFAULT_GRID_RESOLUTION,
     variogram_model: str = 'spherical',
-    low_threshold: float = 1.80,
-    high_threshold: float = 3.31,
-    influence_radius: float = 0.05,
-    deficient_threshold: float = 1.80,
-    subnormal_threshold: float = 2.71,
-    normal_threshold: float = 3.31,
-    max_neighbors: int = 12,
-    min_neighbors: int = 3
+    low_threshold: float = DEFAULT_LOW_THRESHOLD,
+    high_threshold: float = DEFAULT_HIGH_THRESHOLD,
+    influence_radius: float = DEFAULT_INFLUENCE_RADIUS_KM,
+    deficient_threshold: float = DEFAULT_DEFICIENT_THRESHOLD,
+    subnormal_threshold: float = DEFAULT_SUBNORMAL_THRESHOLD,
+    normal_threshold: float = DEFAULT_NORMAL_THRESHOLD,
+    max_neighbors: int = DEFAULT_MAX_NEIGHBORS,
+    min_neighbors: int = DEFAULT_MIN_NEIGHBORS
 ) -> Dict:
     """
     Main function to analyze nitrogen levels using Kriging interpolation.
