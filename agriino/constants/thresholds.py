@@ -98,7 +98,9 @@ CLASSIFICATION_COLORS = {
 # =============================================================================
 
 # Default influence radius in kilometers (0.05 km = 50 meters)
-DEFAULT_INFLUENCE_RADIUS_KM = 0.05
+# Default influence radius in kilometers (0.03 km = 30 meters)
+# Controls the area of influence around each device
+DEFAULT_INFLUENCE_RADIUS_KM = 0.03
 
 # Default grid resolution for Kriging interpolation
 DEFAULT_GRID_RESOLUTION = 50

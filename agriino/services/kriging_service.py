@@ -512,24 +512,37 @@ class KrigingService:
             min_distance = np.min(dist_to_target)
             is_within_influence = min_distance <= self.influence_radius
             
-            if not is_within_influence or len(within_radius_indices) < self.min_neighbors:
-                # Not enough neighbors or outside influence radius - default to normal
-                # Calculate IDW value from all neighbors for better estimation
-                all_distances = dist_to_target
-                valid_mask = all_distances > 0
-                if np.any(valid_mask):
-                    idw_weights = 1 / (all_distances[valid_mask] ** 2)
-                    idw_weights /= np.sum(idw_weights)
-                    interpolated_value = float(np.sum(idw_weights * self._values[valid_mask]))
-                else:
-                    interpolated_value = float(np.mean(self._values)) if len(self._values) > 0 else 2.5
+            if not is_within_influence or len(within_radius_indices) == 0:
+                # No device within influence radius - default to normal
+                # Set classification to 'normal' for areas outside device influence
+                results.append(KrigingResult(
+                    latitude=lat,
+                    longitude=lon,
+                    predicted_value=2.9,  # Normal range value
+                    variance=float(self.sill),
+                    classification='normal'  # Always normal outside influence radius
+                ))
+                continue
+            
+            # If only 1-2 neighbors, use simple IDW instead of full kriging
+            if len(within_radius_indices) < self.min_neighbors:
+                # Use IDW for few neighbors
+                neighbor_distances = dist_to_target[within_radius_indices]
+                neighbor_values = self._values[within_radius_indices]
+                
+                # Avoid division by zero for very close points
+                safe_distances = np.maximum(neighbor_distances, 1e-10)
+                weights = 1 / (safe_distances ** 2)
+                weights /= np.sum(weights)
+                
+                predicted_value = float(np.sum(weights * neighbor_values))
                 
                 results.append(KrigingResult(
                     latitude=lat,
                     longitude=lon,
-                    predicted_value=interpolated_value,
-                    variance=float(self.sill),
-                    classification=self._classify_value(interpolated_value, True)
+                    predicted_value=predicted_value,
+                    variance=float(self.sill * 0.5),  # Lower variance for IDW
+                    classification=self._classify_value(predicted_value, True)
                 ))
                 continue
             
