@@ -180,7 +180,8 @@ class KrigingGrid(models.Model):
     Stores the interpolated grid points from Kriging analysis.
     """
     CLASSIFICATION_CHOICES = [
-        ('low', 'Low'),
+        ('deficient', 'Deficient'),
+        ('subnormal', 'Subnormal'),
         ('normal', 'Normal'),
         ('high', 'High'),
     ]

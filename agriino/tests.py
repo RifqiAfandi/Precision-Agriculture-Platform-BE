@@ -43,7 +43,7 @@ class KrigingServiceTests(TestCase):
         results = service.predict([(-8.1652, 113.7172)])
         
         self.assertEqual(len(results), 1)
-        self.assertIn(results[0].classification, ['low', 'normal', 'high'])
+        self.assertIn(results[0].classification, ['deficient', 'subnormal', 'normal', 'high'])
     
     def test_kriging_grid_generation(self):
         """Test grid generation."""
@@ -74,10 +74,15 @@ class KrigingServiceTests(TestCase):
     
     def test_classification_thresholds(self):
         """Test that classification works correctly."""
-        service = KrigingService(low_threshold=1.5, high_threshold=2.5)
+        service = KrigingService(
+            deficient_threshold=1.5,
+            subnormal_threshold=2.0,
+            normal_threshold=2.5
+        )
         
-        self.assertEqual(service._classify_value(1.0), 'low')
-        self.assertEqual(service._classify_value(2.0), 'normal')
+        self.assertEqual(service._classify_value(1.0), 'deficient')
+        self.assertEqual(service._classify_value(1.8), 'subnormal')
+        self.assertEqual(service._classify_value(2.2), 'normal')
         self.assertEqual(service._classify_value(3.0), 'high')
 
 

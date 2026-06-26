@@ -13,7 +13,6 @@ Features:
 import numpy as np
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
-from scipy.spatial.distance import cdist
 from scipy.linalg import solve
 import logging
 
@@ -191,6 +190,7 @@ class KrigingService:
         self.nugget = nugget
         self.sill = sill
         self.range_param = range_param
+        # Legacy thresholds (kept for DB/API backward compatibility, not used in classification logic)
         self.low_threshold = low_threshold
         self.high_threshold = high_threshold
         self.influence_radius = influence_radius
@@ -211,12 +211,7 @@ class KrigingService:
         self._values: Optional[np.ndarray] = None
     
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        """
-        Calculate the Haversine distance between two points on Earth.
-        
-        Returns distance in kilometers.
-        """
-        R = 6371  # Earth's radius in kilometers
+        R = 6371
         
         lat1_rad = np.radians(lat1)
         lat2_rad = np.radians(lat2)
@@ -224,16 +219,11 @@ class KrigingService:
         dlon = np.radians(lon2 - lon1)
         
         a = np.sin(dlat/2)**2 + np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(dlon/2)**2
-        c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
+        d = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
         
-        return R * c
+        return R * d
     
     def _calculate_distance_matrix(self, coords1: np.ndarray, coords2: Optional[np.ndarray] = None) -> np.ndarray:
-        """
-        Calculate distance matrix between two sets of coordinates.
-        
-        Uses Haversine distance for geographic coordinates.
-        """
         if coords2 is None:
             coords2 = coords1
         
@@ -251,48 +241,27 @@ class KrigingService:
         return distances
     
     def _estimate_variogram_parameters(self, coordinates: np.ndarray, values: np.ndarray) -> Tuple[float, float, float]:
-        """
-        Estimate variogram parameters using Method of Moments with improved estimation.
-        
-        This implementation addresses common issues in variogram fitting:
-        1. Uses robust binning with sufficient lag classes
-        2. Properly estimates nugget from short-distance pairs
-        3. Uses weighted least squares fitting for range estimation
-        4. Handles small sample sizes gracefully
-        
-        Returns:
-            Tuple of (nugget, sill, range)
-        """
         n = len(values)
         variance = np.var(values) if n > 1 else 1.0
         
-        if n < 3:
-            # Default parameters for small datasets
-            # Use a range that's approximately 1/3 of the study area extent
-            # This ensures localized influence
-            return 0.0, max(variance, 0.001), 0.02  # 20 meters default range
+        if n < 3:   
+            return 0.0, max(variance, 0.001), 0.02
         
-        # Calculate experimental variogram
         distances = self._calculate_distance_matrix(coordinates)
         
-        # Get all unique non-zero distances
         upper_tri_indices = np.triu_indices(n, k=1)
         all_distances = distances[upper_tri_indices]
         
         if len(all_distances) == 0:
             return 0.0, max(variance, 0.001), 0.02
-        
-        # Use maximum lag distance as 60% of max distance (Journel & Huijbregts recommendation)
-        # This avoids unreliable estimates at large lags
+
         max_lag = np.max(all_distances) * 0.6
         min_lag = np.min(all_distances[all_distances > 0]) if np.any(all_distances > 0) else 0.001
         
-        # Determine optimal number of bins based on data
-        # Use Sturges' rule with minimum of 8 and maximum of 15 bins
+
         n_pairs = len(all_distances)
         n_bins = max(8, min(15, int(1 + 3.322 * np.log10(n_pairs))))
         
-        # Create bins with equal spacing
         bin_edges = np.linspace(0, max_lag, n_bins + 1)
         
         gamma_values = []
@@ -302,7 +271,7 @@ class KrigingService:
         for k in range(n_bins):
             mask = (distances > bin_edges[k]) & (distances <= bin_edges[k + 1])
             count = np.sum(mask)
-            if count >= 1:  # Need at least 1 pair per bin (ideally more)
+            if count >= 1:
                 pairs_i, pairs_j = np.where(mask)
                 semivariance = 0.5 * np.mean((values[pairs_i] - values[pairs_j])**2)
                 lag = (bin_edges[k] + bin_edges[k + 1]) / 2
@@ -311,68 +280,50 @@ class KrigingService:
                 pair_counts.append(count)
         
         if len(gamma_values) < 2:
-            # Fallback: use data variance and reasonable range
             return 0.0, max(variance, 0.001), max_lag / 3
         
         gamma_values = np.array(gamma_values)
         lag_values = np.array(lag_values)
         pair_counts = np.array(pair_counts)
         
-        # Estimate nugget: extrapolate from first few bins to h=0
-        # Use weighted linear regression on first 3 bins (or fewer if not available)
         n_for_nugget = min(3, len(gamma_values))
         if n_for_nugget >= 2:
-            # Simple linear extrapolation to h=0
             slope = (gamma_values[n_for_nugget-1] - gamma_values[0]) / (lag_values[n_for_nugget-1] - lag_values[0] + 1e-10)
             nugget = max(0, gamma_values[0] - slope * lag_values[0])
         else:
             nugget = gamma_values[0] * 0.5
         
-        # Ensure nugget is reasonable (typically 0-50% of sill)
         nugget = min(nugget, variance * 0.5)
         nugget = max(nugget, 0.0)
         
-        # Estimate sill as the asymptotic variance
-        # Use weighted average of values in the plateau region
         sill_candidates = gamma_values[gamma_values >= np.percentile(gamma_values, 70)]
         if len(sill_candidates) > 0:
             total_sill = np.mean(sill_candidates)
         else:
             total_sill = np.max(gamma_values)
         
-        # Partial sill (sill above nugget)
         partial_sill = max(total_sill - nugget, 0.001)
         
-        # Estimate range using weighted least squares fit
-        # Find where variogram reaches ~63% of sill (characteristic range for exponential)
-        # or ~86% for spherical model effective range
         if self.variogram_model_name == 'exponential':
-            target_gamma = nugget + 0.632 * partial_sill  # 1 - e^(-1)
+            target_gamma = nugget + 0.632 * partial_sill
         elif self.variogram_model_name == 'gaussian':
-            target_gamma = nugget + 0.632 * partial_sill  # Similar behavior
-        else:  # spherical, linear
-            target_gamma = nugget + 0.5 * partial_sill  # 50% of sill
+            target_gamma = nugget + 0.632 * partial_sill
+        else: 
+            target_gamma = nugget + 0.5 * partial_sill
         
-        # Find range by interpolation
         range_param = None
         for i in range(len(gamma_values) - 1):
             if gamma_values[i] <= target_gamma <= gamma_values[i + 1]:
-                # Linear interpolation
                 t = (target_gamma - gamma_values[i]) / (gamma_values[i + 1] - gamma_values[i] + 1e-10)
                 range_param = lag_values[i] + t * (lag_values[i + 1] - lag_values[i])
                 break
         
         if range_param is None:
             if gamma_values[0] >= target_gamma:
-                # All values above target, use first lag
                 range_param = lag_values[0]
             else:
-                # Variogram hasn't reached sill, use 2/3 of max lag
                 range_param = max_lag * 0.67
         
-        # Ensure range is reasonable for agricultural applications
-        # Minimum range: ~5 meters (0.005 km)
-        # Maximum range: max_lag (60% of study area)
         range_param = max(range_param, 0.005)
         range_param = min(range_param, max_lag)
         
@@ -425,25 +376,7 @@ class KrigingService:
         return self
     
     def _classify_value(self, value: float, is_within_influence: bool = True) -> str:
-        """
-        Classify a nitrogen value based on thresholds.
-        
-        Categories (based on nitrogen percentage):
-        - deficient: <1.80% (Red)
-        - subnormal: 1.80-2.71% (Dark Orange)
-        - normal: 2.71-3.31% (Light Orange)
-        - high: >3.31% (Yellow)
-        - no_data: outside influence radius - now treated as 'normal' (Orange)
-        
-        Args:
-            value: Nitrogen value to classify
-            is_within_influence: Whether the point is within sensor influence radius
-            
-        Returns:
-            Classification string
-        """
         if not is_within_influence:
-            # Areas outside influence radius default to 'normal' classification
             return 'normal'
         
         if value < self.deficient_threshold:
@@ -456,21 +389,6 @@ class KrigingService:
             return 'high'
     
     def predict(self, target_points: List[Tuple[float, float]]) -> List[KrigingResult]:
-        """
-        Predict values at target points using Ordinary Kriging with local neighborhood.
-        
-        This implementation uses a search neighborhood approach for local kriging,
-        which provides better local influence and more realistic spatial patterns:
-        1. For each target point, find the nearest neighbors within influence radius
-        2. Use only those neighbors for kriging (local kriging)
-        3. This preserves point-level variability and localized influence
-        
-        Args:
-            target_points: List of (latitude, longitude) tuples
-            
-        Returns:
-            List of KrigingResult objects
-        """
         if not self._fitted:
             raise RuntimeError("Model must be fitted before prediction. Call fit() first.")
         
@@ -587,24 +505,18 @@ class KrigingService:
             k[n_neighbors] = 1
             
             try:
-                # Add small regularization to diagonal to prevent singularity
-                # This is a standard technique for ill-conditioned kriging systems
                 regularization = 1e-10 * self.sill
                 np.fill_diagonal(K[:n_neighbors, :n_neighbors], 
                                np.diag(K[:n_neighbors, :n_neighbors]) + regularization)
                 
-                # Solve the Kriging system
                 weights = solve(K, k, assume_a='sym')
                 
-                # Predicted value (sum of weights * values)
                 predicted_value = np.sum(weights[:n_neighbors] * neighbor_values)
                 
-                # Kriging variance
                 variance = np.sum(weights[:n_neighbors] * gamma_to_target) + weights[n_neighbors]
-                variance = max(0, variance)  # Ensure non-negative
+                variance = max(0, variance)
                 
             except np.linalg.LinAlgError:
-                # Fallback to IDW interpolation
                 logger.warning("Local Kriging system singular, using IDW fallback")
                 
                 if np.min(neighbor_distances) < 1e-10:
@@ -612,7 +524,6 @@ class KrigingService:
                     predicted_value = neighbor_values[idx]
                     variance = 0
                 else:
-                    # IDW with squared distance weights
                     idw_weights = 1 / (neighbor_distances ** 2)
                     idw_weights /= np.sum(idw_weights)
                     predicted_value = np.sum(idw_weights * neighbor_values)

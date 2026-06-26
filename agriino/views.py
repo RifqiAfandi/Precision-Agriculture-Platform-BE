@@ -11,10 +11,10 @@ from .serializers import (
     DeviceSerializer, DeviceCreateSerializer, DeviceDataSerializer,
     AreaSerializer, AreaCreateSerializer, AreaDeviceSerializer,
     AnalysisResultSerializer, AnalysisResultSummarySerializer,
-    KrigingAnalysisRequestSerializer, KrigingAnalysisResponseSerializer,
+    KrigingAnalysisRequestSerializer,
     BulkDeviceDataSerializer
 )
-from .services.kriging_service import analyze_nitrogen_levels, KrigingService
+from .services.kriging_service import analyze_nitrogen_levels
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +185,6 @@ class KrigingAnalysisView(APIView):
         data = serializer.validated_data
         
         try:
-            # Prepare device data for Kriging
             device_data = [
                 {
                     'latitude': d['lat'],
@@ -215,7 +214,7 @@ class KrigingAnalysisView(APIView):
                 variogram_model=data['variogram_model'],
                 low_threshold=data['low_threshold'],
                 high_threshold=data['high_threshold'],
-                influence_radius=data.get('influence_radius', 0.05),  # Default 50m
+                influence_radius=data.get('influence_radius', 0.05),
                 deficient_threshold=data.get('deficient_threshold', 1.80),
                 subnormal_threshold=data.get('subnormal_threshold', 2.71),
                 normal_threshold=data.get('normal_threshold', 3.31)
