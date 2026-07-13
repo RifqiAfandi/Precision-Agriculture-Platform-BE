@@ -158,7 +158,7 @@ class KrigingAnalysisView(APIView):
     
     Flow: Firebase -> Frontend -> This API -> Frontend (with analysis results)
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
     def post(self, request):
         """
@@ -305,7 +305,7 @@ class SyncDeviceDataView(APIView):
     1. Store device data in the database for historical tracking
     2. Update device locations and sensor readings
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
     def post(self, request):
         """
@@ -392,12 +392,12 @@ class SyncDeviceDataView(APIView):
             logger.exception("Error syncing device data")
             return Response({
                 'success': False,
-                'message': f'Error syncing data: {str(e)}'
+                'message': 'An unexpected error occurred while syncing data'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticatedOrReadOnly])
 def quick_analysis(request):
     """
     Quick Kriging analysis endpoint for simple requests.

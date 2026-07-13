@@ -97,7 +97,6 @@ CLASSIFICATION_COLORS = {
 # KRIGING ANALYSIS PARAMETERS
 # =============================================================================
 
-# Default influence radius in kilometers (0.05 km = 50 meters)
 # Default influence radius in kilometers (0.03 km = 30 meters)
 # Controls the area of influence around each device
 DEFAULT_INFLUENCE_RADIUS_KM = 0.03

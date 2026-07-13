@@ -67,6 +67,9 @@ class DeviceData(models.Model):
         ordering = ['-created_at']
         verbose_name = 'Device Data'
         verbose_name_plural = 'Device Data'
+        indexes = [
+            models.Index(fields=['device', '-created_at'], name='idx_devicedata_device_date'),
+        ]
 
     def __str__(self):
         return f"Data for {self.device.device_id} - Nitrogen: {self.nitrogen}"

@@ -174,7 +174,7 @@ class KrigingService:
             range_param: Range parameter (distance at which sill is reached). If None, will be estimated.
             low_threshold: Threshold below which nitrogen is classified as LOW (legacy)
             high_threshold: Threshold above which nitrogen is classified as HIGH (legacy)
-            influence_radius: Maximum distance (in km) from a sensor for interpolation to apply
+            influence_radius: Maximum distance (in km) from a sensor for interpolation to apply (default 30m)
             deficient_threshold: Threshold below which nitrogen is classified as DEFICIENT (<1.80%)
             subnormal_threshold: Threshold for SUBNORMAL classification (1.80-2.71%)
             normal_threshold: Threshold for NORMAL classification (2.71-3.31%), above is HIGH
@@ -224,19 +224,22 @@ class KrigingService:
         return R * d
     
     def _calculate_distance_matrix(self, coords1: np.ndarray, coords2: Optional[np.ndarray] = None) -> np.ndarray:
+        """Calculate pairwise haversine distances using vectorized NumPy operations."""
         if coords2 is None:
             coords2 = coords1
         
-        n1 = len(coords1)
-        n2 = len(coords2)
-        distances = np.zeros((n1, n2))
+        R = 6371  # Earth radius in km
         
-        for i in range(n1):
-            for j in range(n2):
-                distances[i, j] = self._haversine_distance(
-                    coords1[i, 0], coords1[i, 1],
-                    coords2[j, 0], coords2[j, 1]
-                )
+        lat1 = np.radians(coords1[:, 0:1])   # shape (n1, 1)
+        lon1 = np.radians(coords1[:, 1:2])   # shape (n1, 1)
+        lat2 = np.radians(coords2[:, 0:1].T) # shape (1, n2)
+        lon2 = np.radians(coords2[:, 1:2].T) # shape (1, n2)
+        
+        dlat = lat1 - lat2
+        dlon = lon1 - lon2
+        
+        a = np.sin(dlat / 2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2)**2
+        distances = R * 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
         
         return distances
     
@@ -636,7 +639,7 @@ def analyze_nitrogen_levels(
         variogram_model: Variogram model to use
         low_threshold: Nitrogen threshold for LOW classification (legacy)
         high_threshold: Nitrogen threshold for HIGH classification (legacy)
-        influence_radius: Maximum distance (in km) from sensors for interpolation (default 50m)
+        influence_radius: Maximum distance (in km) from sensors for interpolation (default 30m)
         deficient_threshold: Threshold for DEFICIENT classification (<1.80%)
         subnormal_threshold: Threshold for SUBNORMAL classification (1.80-2.71%)
         normal_threshold: Threshold for NORMAL classification (2.71-3.31%), above is HIGH

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Device, Area, AreaDevice, AnalysisResult, KrigingGrid
+from .models import Device, DeviceData, Area, AreaDevice, AnalysisResult, KrigingGrid
 
 
 @admin.register(Device)
@@ -8,6 +8,15 @@ class DeviceAdmin(admin.ModelAdmin):
     list_filter = ('is_active', 'created_at')
     search_fields = ('device_id', 'name')
     ordering = ('-created_at',)
+
+
+@admin.register(DeviceData)
+class DeviceDataAdmin(admin.ModelAdmin):
+    list_display = ('device', 'nitrogen', 'spad', 'firebase_timestamp', 'created_at')
+    list_filter = ('device', 'created_at')
+    search_fields = ('device__device_id',)
+    ordering = ('-created_at',)
+    raw_id_fields = ('device',)
 
 
 @admin.register(Area)
@@ -38,3 +47,4 @@ class KrigingGridAdmin(admin.ModelAdmin):
     list_display = ('analysis_result', 'latitude', 'longitude', 'predicted_value', 'classification')
     list_filter = ('classification',)
     ordering = ('-analysis_result__created_at',)
+

@@ -41,7 +41,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_superuser = models.BooleanField(default=False)
     
     date_joined = models.DateTimeField(auto_now_add=True)
-    last_login = models.DateTimeField(auto_now=True)
+    last_login = models.DateTimeField(null=True, blank=True)
     
     objects = UserManager()
     
