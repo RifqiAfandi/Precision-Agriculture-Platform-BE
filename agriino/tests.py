@@ -86,8 +86,21 @@ class KrigingServiceTests(TestCase):
         self.assertEqual(service._classify_value(3.0), 'high')
 
 
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
 class KrigingAPITests(APITestCase):
     """Tests for the Kriging analysis API endpoints."""
+    
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='test@example.com',
+            name='Test User',
+            password='testpassword123'
+        )
+        self.client.force_authenticate(user=self.user)
     
     def test_health_check(self):
         """Test health check endpoint."""

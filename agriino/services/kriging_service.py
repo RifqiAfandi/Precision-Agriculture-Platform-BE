@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from scipy.linalg import solve
 import logging
 
-from ..constants import (
+from agriino.constants import (
     DEFAULT_DEFICIENT_THRESHOLD,
     DEFAULT_SUBNORMAL_THRESHOLD,
     DEFAULT_NORMAL_THRESHOLD,
