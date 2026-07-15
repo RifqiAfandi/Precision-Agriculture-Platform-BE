@@ -296,7 +296,8 @@ class KrigingService:
         else:
             nugget = gamma_values[0] * 0.5
         
-        nugget = min(nugget, variance * 0.5)
+        # Cap nugget at 15% of the total variance to prevent excessive smoothing (nugget effect)
+        nugget = min(nugget, variance * 0.15)
         nugget = max(nugget, 0.0)
         
         sill_candidates = gamma_values[gamma_values >= np.percentile(gamma_values, 70)]

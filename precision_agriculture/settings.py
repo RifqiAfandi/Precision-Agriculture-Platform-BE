@@ -211,3 +211,12 @@ SIMPLE_JWT = {
     'TOKEN_TYPE_CLAIM': 'token_type',
 }
 
+# Firebase Configuration
+import os
+FIREBASE_CREDENTIALS_PATH = config('FIREBASE_CREDENTIALS_PATH', default=None)
+if FIREBASE_CREDENTIALS_PATH:
+    # Resolve relative path from BASE_DIR if needed
+    if not os.path.isabs(FIREBASE_CREDENTIALS_PATH):
+        FIREBASE_CREDENTIALS_PATH = os.path.abspath(os.path.join(BASE_DIR, FIREBASE_CREDENTIALS_PATH))
+
+

@@ -97,15 +97,15 @@ CLASSIFICATION_COLORS = {
 # KRIGING ANALYSIS PARAMETERS
 # =============================================================================
 
-# Default influence radius in kilometers (0.03 km = 30 meters)
+# Default influence radius in kilometers (0.2 km = 200 meters)
 # Controls the area of influence around each device
-DEFAULT_INFLUENCE_RADIUS_KM = 0.03
+DEFAULT_INFLUENCE_RADIUS_KM = 0.2
 
-# Default grid resolution for Kriging interpolation
-DEFAULT_GRID_RESOLUTION = 50
+# Default grid resolution for Kriging interpolation (120 for smoother output)
+DEFAULT_GRID_RESOLUTION = 120
 
 # Search neighborhood parameters for local Kriging
-DEFAULT_MAX_NEIGHBORS = 12  # Maximum number of neighboring points
+DEFAULT_MAX_NEIGHBORS = 8  # Maximum number of neighboring points (reduced to sharpen local gradients)
 DEFAULT_MIN_NEIGHBORS = 3   # Minimum number of neighbors required
 
 # Available variogram models

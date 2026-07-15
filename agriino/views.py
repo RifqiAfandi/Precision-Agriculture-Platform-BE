@@ -15,6 +15,7 @@ from .serializers import (
     BulkDeviceDataSerializer
 )
 from .services.kriging_service import analyze_nitrogen_levels
+from agriino.constants import DEFAULT_INFLUENCE_RADIUS_KM
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +25,25 @@ class DeviceViewSet(viewsets.ModelViewSet):
     ViewSet for managing devices.
     
     Provides CRUD operations for agricultural sensor devices.
+    Supports ?no_page=true query parameter to disable pagination and return all devices.
     """
     queryset = Device.objects.all()
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    
+    def list(self, request, *args, **kwargs):
+        """Auto-sync with Firebase Firestore on every list request to get real-time data."""
+        try:
+            from agriino.services.firebase_sync import sync_firebase_to_db
+            sync_firebase_to_db()
+        except Exception as e:
+            logger.error(f"Auto-sync with Firebase failed: {e}")
+        return super().list(request, *args, **kwargs)
+    
+    def paginate_queryset(self, queryset):
+        """Disable pagination when ?no_page=true is passed."""
+        if self.request.query_params.get('no_page', '').lower() == 'true':
+            return None
+        return super().paginate_queryset(queryset)
     
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -51,6 +68,99 @@ class DeviceViewSet(viewsets.ModelViewSet):
             serializer.save(device=device)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'])
+    def daily_averages(self, request):
+        """Get daily average measurements grouped by date."""
+        from datetime import datetime
+        import collections
+        
+        daily_groups = collections.defaultdict(list)
+        for data in DeviceData.objects.select_related('device').all().order_by('firebase_timestamp', 'created_at'):
+            ts = data.firebase_timestamp
+            if ts:
+                dt = datetime.fromtimestamp(ts / 1000.0)
+            else:
+                dt = data.created_at
+                
+            date_str = dt.strftime('%Y-%m-%d')
+            daily_groups[date_str].append((dt, data))
+            
+        days_map = {
+            'Monday': 'Sen', 'Tuesday': 'Sel', 'Wednesday': 'Rab', 'Thursday': 'Kam',
+            'Friday': 'Jum', 'Saturday': 'Sab', 'Sunday': 'Min'
+        }
+        months_map = {
+            1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'Mei', 6: 'Jun',
+            7: 'Jul', 8: 'Agt', 9: 'Sep', 10: 'Okt', 11: 'Nov', 12: 'Des'
+        }
+        
+        daily_averages_list = []
+        for date_str, items in sorted(daily_groups.items(), reverse=True):
+            try:
+                entry_date = datetime.strptime(date_str, '%Y-%m-%d')
+                day_name = days_map.get(entry_date.strftime('%A'), entry_date.strftime('%a'))
+                month_name = months_map.get(entry_date.month, entry_date.strftime('%b'))
+                date_label = f"{day_name}, {entry_date.day} {month_name}"
+            except Exception:
+                date_label = date_str
+                
+            devices_data_for_day = []
+            for dt, item in items:
+                devices_data_for_day.append({
+                    'device_id': item.device.device_id,
+                    'name': item.device.name or f"Scan {item.device.device_id[:6]}",
+                    'lat': item.device.latitude,
+                    'lng': item.device.longitude,
+                    'nitrogen': item.nitrogen,
+                    'spad': item.spad,
+                    'R': item.r,
+                    'G': item.g,
+                    'B': item.b,
+                    'O': item.o,
+                    'V': item.v,
+                    'Y': item.y,
+                    'timestamp': item.firebase_timestamp or int(dt.timestamp() * 1000),
+                    'classification': item.class_eq1 or 'unknown'
+                })
+                
+            nitrogens = [item[1].nitrogen for item in items if item[1].nitrogen is not None]
+            spads = [item[1].spad for item in items if item[1].spad is not None]
+            rs = [item[1].r for item in items if item[1].r is not None]
+            gs = [item[1].g for item in items if item[1].g is not None]
+            bs = [item[1].b for item in items if item[1].b is not None]
+            
+            avg_nitrogen = sum(nitrogens) / len(nitrogens) if nitrogens else 0
+            avg_spad = sum(spads) / len(spads) if spads else 0
+            avg_r = sum(rs) / len(rs) if rs else 0
+            avg_g = sum(gs) / len(gs) if gs else 0
+            avg_b = sum(bs) / len(bs) if bs else 0
+            
+            # classify average nitrogen
+            if avg_nitrogen < 1.80:
+                classification = 'deficient'
+            elif avg_nitrogen < 2.71:
+                classification = 'subnormal'
+            elif avg_nitrogen < 3.31:
+                classification = 'normal'
+            else:
+                classification = 'high'
+                
+            daily_averages_list.append({
+                'date': date_str,
+                'dateLabel': date_label,
+                'avgNitrogen': avg_nitrogen,
+                'avgSpad': avg_spad,
+                'avgR': avg_r,
+                'avgG': avg_g,
+                'avgB': avg_b,
+                'classification': classification,
+                'devices': devices_data_for_day,
+                'readingsCount': len(items)
+            })
+            
+        return Response(daily_averages_list)
+
 
 
 class AreaViewSet(viewsets.ModelViewSet):
@@ -214,7 +324,7 @@ class KrigingAnalysisView(APIView):
                 variogram_model=data['variogram_model'],
                 low_threshold=data['low_threshold'],
                 high_threshold=data['high_threshold'],
-                influence_radius=data.get('influence_radius', 0.05),
+                influence_radius=data.get('influence_radius', DEFAULT_INFLUENCE_RADIUS_KM),
                 deficient_threshold=data.get('deficient_threshold', 1.80),
                 subnormal_threshold=data.get('subnormal_threshold', 2.71),
                 normal_threshold=data.get('normal_threshold', 3.31)
@@ -311,10 +421,28 @@ class SyncDeviceDataView(APIView):
         """
         Sync device data from Firebase to the database.
         
-        Request body should contain:
-        - devices: List of device data from Firebase
-        - save_to_db: Whether to save the data to database (default: False)
+        If request body is empty or does not contain 'devices', this will connect 
+        to Firebase Firestore using the backend service credentials and sync all scans.
+        Otherwise, syncs the provided devices list.
         """
+        if not request.data or 'devices' not in request.data:
+            try:
+                from .services.firebase_sync import sync_firebase_to_db
+                stats = sync_firebase_to_db()
+                return Response({
+                    'success': True,
+                    'message': 'Device data synced from Firestore successfully',
+                    'devices_created': stats['devices_created'],
+                    'devices_updated': stats['devices_updated'],
+                    'data_points_created': stats['data_points_created']
+                }, status=status.HTTP_200_OK)
+            except Exception as e:
+                logger.exception("Error syncing from Firestore")
+                return Response({
+                    'success': False,
+                    'message': f'Failed to sync from Firestore: {str(e)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         serializer = BulkDeviceDataSerializer(data=request.data)
         
         if not serializer.is_valid():
@@ -334,6 +462,7 @@ class SyncDeviceDataView(APIView):
             })
         
         try:
+
             created_count = 0
             updated_count = 0
             data_count = 0
